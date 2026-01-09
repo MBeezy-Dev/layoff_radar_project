@@ -1,0 +1,418 @@
+import os
+
+# Der Bruder sagt: Hier definieren wir das komplette Repo
+project_structure = {
+    "requirements.txt": """requests
+beautifulsoup4
+pandas
+""",
+
+    ".github/workflows/scraper.yml": """name: Daily Layoff Scraper
+
+on:
+  schedule:
+    # Läuft alle 6 Stunden
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Button zum manuellen Starten
+
+permissions:
+  contents: write
+
+jobs:
+  scrape_and_update:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Run Scraper
+      run: |
+        python main.py
+
+    - name: Commit and Push if changes
+      run: |
+        git config --global user.name 'LayoffBot'
+        git config --global user.email 'bot@layoffradar.com'
+        git add data/layoffs.db data/web_export.json
+        git commit -m "Auto-update: New layoff data found" || exit 0
+        git push
+""",
+
+    "scrapers/__init__.py": "",
+
+    "scrapers/base.py": """from abc import ABC, abstractmethod
+
+class BaseScraper(ABC):
+    @abstractmethod
+    def scrape(self):
+        \"\"\"Muss eine Liste von Dictionaries zurückgeben\"\"\"
+        pass
+""",
+
+    "scrapers/ny_scraper.py": """import hashlib
+import random
+from datetime import datetime, timedelta
+from .base import BaseScraper
+
+class NYScraper(BaseScraper):
+    # Simuliert New York State WARN Notices
+    URL = "https://dol.ny.gov/warn-notices"
+
+    def scrape(self):
+        print("   -> Scrape NY Data...")
+        results = []
+        
+        # MOCK DATEN GENERATOR (Damit du auf der Website was siehst)
+        # In Produktion hier: requests.get() und BeautifulSoup logic
+        
+        companies = ["TechFlow Solutions", "Global Logistics NY", "Urban Eat Corp", "Finance Partners LLC", "Hudson Valley Manufacturing"]
+        cities = ["New York, NY", "Albany, NY", "Buffalo, NY", "Rochester, NY"]
+        
+        # Wir generieren dynamisch Daten basierend auf dem heutigen Tag
+        # Damit der Bot immer mal was neues "findet"
+        today = datetime.now()
+        
+        for i in range(3): 
+            # Erzeugt Pseudo-Zufallsdaten, die sich täglich ändern
+            day_offset = i
+            date_str = (today - timedelta(days=day_offset)).strftime("%Y-%m-%d")
+            
+            comp = companies[i % len(companies)]
+            loc = cities[i % len(cities)]
+            count = (i + 1) * 42
+            
+            # Hash erstellen
+            raw_string = f"{comp}{date_str}{count}"
+            unique_hash = hashlib.md5(raw_string.encode()).hexdigest()
+            
+            entry = {
+                "company": comp,
+                "location": loc,
+                "affected_count": count,
+                "notice_date": date_str,
+                "layoff_date": (today + timedelta(days=60)).strftime("%Y-%m-%d"),
+                "industry": "Mixed",
+                "source_url": self.URL,
+                "unique_hash": unique_hash
+            }
+            results.append(entry)
+            
+        return results
+""",
+
+    "database.py": """import sqlite3
+import json
+import os
+from datetime import datetime
+
+class Database:
+    def __init__(self, db_path="data/layoffs.db"):
+        # Stelle sicher, dass der Ordner existiert
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        
+        self.conn = sqlite3.connect(db_path)
+        self.cursor = self.conn.cursor()
+        self.create_table()
+
+    def create_table(self):
+        self.cursor.execute(\"\"\"
+            CREATE TABLE IF NOT EXISTS notices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company TEXT,
+                location TEXT,
+                affected_count INTEGER,
+                notice_date DATE,
+                layoff_date DATE,
+                industry TEXT,
+                source_url TEXT,
+                unique_hash TEXT UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        \"\"\")
+        self.conn.commit()
+
+    def insert_notice(self, data):
+        try:
+            self.cursor.execute(\"\"\"
+                INSERT INTO notices (company, location, affected_count, notice_date, layoff_date, industry, source_url, unique_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            \"\"\", (
+                data['company'], data['location'], data['affected_count'],
+                data['notice_date'], data['layoff_date'], data['industry'],
+                data['source_url'], data['unique_hash']
+            ))
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def export_to_json(self, output_path="data/web_export.json"):
+        self.conn.row_factory = sqlite3.Row
+        cur = self.conn.cursor()
+        # Hole die neuesten 100 Einträge
+        cur.execute("SELECT * FROM notices ORDER BY notice_date DESC LIMIT 100")
+        rows = cur.fetchall()
+        
+        data = [dict(row) for row in rows]
+        
+        # Statistiken berechnen
+        total_affected = sum(row['affected_count'] for row in data) if data else 0
+        latest_date = data[0]['notice_date'] if data else "N/A"
+        
+        export_data = {
+            "meta": {
+                "generated_at": datetime.now().isoformat(),
+                "total_records": len(data),
+                "total_affected_7days": total_affected, # Simplifiziert
+                "latest_update": latest_date
+            },
+            "data": data
+        }
+        
+        with open(output_path, 'w') as f:
+            json.dump(export_data, f, indent=2)
+            
+    def close(self):
+        self.conn.close()
+""",
+
+    "main.py": """from database import Database
+from scrapers.ny_scraper import NYScraper
+
+def run_job():
+    print("--- LayoffRadar Scraper Started ---")
+    db = Database()
+    
+    # Scraper registrieren
+    scrapers = [NYScraper()]
+    
+    new_count = 0
+    
+    for scraper in scrapers:
+        try:
+            data = scraper.scrape()
+            for entry in data:
+                if db.insert_notice(entry):
+                    print(f"[NEW] {entry['company']} in {entry['location']}")
+                    new_count += 1
+                else:
+                    print(f"[SKIP] {entry['company']} (already exists)")
+        except Exception as e:
+            print(f"Error in scraper: {e}")
+            
+    # WICHTIG: JSON für die Website generieren
+    print("Generating JSON export...")
+    db.export_to_json()
+    db.close()
+    print(f"--- Job Done. {new_count} new records. ---")
+
+if __name__ == "__main__":
+    run_job()
+""",
+
+    "index.html": """<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LayoffRadar | Early Economic Signals</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gray: {
+                            900: '#111827',
+                            800: '#1f2937',
+                            700: '#374151',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass {
+            background: rgba(31, 41, 55, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans antialiased min-h-screen">
+
+    <nav class="border-b border-gray-800 bg-gray-900 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-red-500 text-2xl mr-2">📡</span>
+                    <span class="font-bold text-xl tracking-tight">Layoff<span class="text-red-500">Radar</span></span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="last-updated" class="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">Loading...</span>
+                    <a href="#" class="text-sm text-gray-400 hover:text-white transition">API Access</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold mb-2">WARN Notice Aggregator</h1>
+            <p class="text-gray-400">Real-time tracking of mass layoff notices before they hit the major news.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="glass rounded-xl p-6 shadow-lg">
+                <div class="text-gray-400 text-sm uppercase font-semibold">Affected Employees (Last Run)</div>
+                <div class="text-3xl font-bold text-white mt-2" id="kpi-affected">--</div>
+            </div>
+            <div class="glass rounded-xl p-6 shadow-lg">
+                <div class="text-gray-400 text-sm uppercase font-semibold">Notices Tracked</div>
+                <div class="text-3xl font-bold text-white mt-2" id="kpi-count">--</div>
+            </div>
+            <div class="glass rounded-xl p-6 shadow-lg border-l-4 border-red-500">
+                <div class="text-gray-400 text-sm uppercase font-semibold">High Alert Sector</div>
+                <div class="text-3xl font-bold text-white mt-2">Tech & Retail</div>
+            </div>
+        </div>
+
+        <div class="mb-6">
+            <input type="text" id="search" placeholder="Search company, city or industry..." 
+                class="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition">
+        </div>
+
+        <div class="glass rounded-xl overflow-hidden shadow-xl">
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead class="bg-gray-800 text-gray-400 text-xs uppercase font-medium">
+                        <tr>
+                            <th class="px-6 py-4 text-left tracking-wider">Company</th>
+                            <th class="px-6 py-4 text-left tracking-wider">Location</th>
+                            <th class="px-6 py-4 text-left tracking-wider">Affected</th>
+                            <th class="px-6 py-4 text-left tracking-wider">Notice Date</th>
+                            <th class="px-6 py-4 text-left tracking-wider">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-gray-700">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Data Fetching Logic
+        async function loadData() {
+            try {
+                // In a real repo, this points to data/web_export.json
+                // Falls du das lokal testest ohne Server, könnte CORS blockieren.
+                // Tipp: Nutze "python -m http.server" im Root Ordner.
+                const response = await fetch('data/web_export.json');
+                if (!response.ok) throw new Error('Failed to load data');
+                
+                const json = await response.json();
+                renderDashboard(json);
+            } catch (error) {
+                console.error(error);
+                // Fallback für Demo, falls JSON noch nicht existiert
+                document.getElementById('table-body').innerHTML = `<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">Waiting for first scraper run... (Check GitHub Actions)</td></tr>`;
+            }
+        }
+
+        function renderDashboard(data) {
+            // Update KPIs
+            document.getElementById('kpi-affected').innerText = data.meta.total_affected_7days.toLocaleString();
+            document.getElementById('kpi-count').innerText = data.meta.total_records;
+            document.getElementById('last-updated').innerText = "Updated: " + new Date(data.meta.generated_at).toLocaleString();
+
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+
+            data.data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-800 transition duration-150 ease-in-out";
+                
+                // Risk Highlighting
+                const countClass = row.affected_count > 100 ? "text-red-400 font-bold" : "text-gray-300";
+                
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm font-medium text-white">${row.company}</div>
+                        <div class="text-xs text-gray-500">${row.industry || 'Unknown Sector'}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                        ${row.location}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm ${countClass}">
+                        ${row.affected_count}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                        ${row.notice_date}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-900 text-red-200">
+                            WARN Issued
+                        </span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            // Simple Search
+            document.getElementById('search').addEventListener('keyup', (e) => {
+                const term = e.target.value.toLowerCase();
+                const rows = tbody.querySelectorAll('tr');
+                rows.forEach(row => {
+                    const text = row.innerText.toLowerCase();
+                    row.style.display = text.includes(term) ? '' : 'none';
+                });
+            });
+        }
+
+        // Start
+        loadData();
+    </script>
+</body>
+</html>
+"""
+}
+
+def create_project():
+    base_dir = "."
+    
+    print(f"Erstelle Projektstruktur in '{os.path.abspath(base_dir)}'...")
+    
+    for path, content in project_structure.items():
+        full_path = os.path.join(base_dir, path)
+        directory = os.path.dirname(full_path)
+        
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+            
+        with open(full_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+            
+        print(f" - Erstellt: {path}")
+        
+    print("\\nFERTIG! Der Bruder hat geliefert.")
+    print("1. Initialisiere Git: 'git init'")
+    print("2. Führe einmalig lokal aus: 'python main.py' (zum Testen)")
+    print("3. Push es zu GitHub.")
+    print("4. Aktiviere GitHub Pages in den Settings (Source: main branch / root).")
+
+if __name__ == "__main__":
+    create_project()
