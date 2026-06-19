@@ -1,11 +1,23 @@
 {
   "meta": {
-    "generated_at": "2026-06-18T20:29:23.092415",
+    "generated_at": "2026-06-19T04:46:17.082288",
     "total_records": 100,
     "total_affected_7days": 8274,
-    "latest_update": "2026-06-18"
+    "latest_update": "2026-06-19"
   },
   "data": [
+    {
+      "id": 484,
+      "company": "TechFlow Solutions",
+      "location": "New York, NY",
+      "affected_count": 42,
+      "notice_date": "2026-06-19",
+      "layoff_date": "2026-08-18",
+      "industry": "Mixed",
+      "source_url": "https://dol.ny.gov/warn-notices",
+      "unique_hash": "307d9912678936ddf6c1fc25ce835772",
+      "created_at": "2026-06-19 04:46:17"
+    },
     {
       "id": 481,
       "company": "TechFlow Solutions",
@@ -17,6 +29,18 @@
       "source_url": "https://dol.ny.gov/warn-notices",
       "unique_hash": "af14301a73f0691afee2198bdbc3b0a0",
       "created_at": "2026-06-18 04:18:27"
+    },
+    {
+      "id": 485,
+      "company": "Global Logistics NY",
+      "location": "Albany, NY",
+      "affected_count": 84,
+      "notice_date": "2026-06-18",
+      "layoff_date": "2026-08-18",
+      "industry": "Mixed",
+      "source_url": "https://dol.ny.gov/warn-notices",
+      "unique_hash": "f57b3a56586e8b66c4080c3a61b6e463",
+      "created_at": "2026-06-19 04:46:17"
     },
     {
       "id": 478,
@@ -41,6 +65,18 @@
       "source_url": "https://dol.ny.gov/warn-notices",
       "unique_hash": "a97878619a214d0ab1a82fedefc30967",
       "created_at": "2026-06-18 04:18:27"
+    },
+    {
+      "id": 486,
+      "company": "Urban Eat Corp",
+      "location": "Buffalo, NY",
+      "affected_count": 126,
+      "notice_date": "2026-06-17",
+      "layoff_date": "2026-08-18",
+      "industry": "Mixed",
+      "source_url": "https://dol.ny.gov/warn-notices",
+      "unique_hash": "7e1601195145a776a407b44def25b794",
+      "created_at": "2026-06-19 04:46:17"
     },
     {
       "id": 475,
@@ -1169,42 +1205,6 @@
       "source_url": "https://dol.ny.gov/warn-notices",
       "unique_hash": "d5ad42da40aa447bc6a3b4b12821efba",
       "created_at": "2026-05-16 03:30:58"
-    },
-    {
-      "id": 386,
-      "company": "Global Logistics NY",
-      "location": "Albany, NY",
-      "affected_count": 84,
-      "notice_date": "2026-05-16",
-      "layoff_date": "2026-07-16",
-      "industry": "Mixed",
-      "source_url": "https://dol.ny.gov/warn-notices",
-      "unique_hash": "a74eb496767fd742520af7c78116090a",
-      "created_at": "2026-05-17 03:49:00"
-    },
-    {
-      "id": 390,
-      "company": "Urban Eat Corp",
-      "location": "Buffalo, NY",
-      "affected_count": 126,
-      "notice_date": "2026-05-16",
-      "layoff_date": "2026-07-17",
-      "industry": "Mixed",
-      "source_url": "https://dol.ny.gov/warn-notices",
-      "unique_hash": "55e3e81daf034cbea68337577189d749",
-      "created_at": "2026-05-18 04:00:34"
-    },
-    {
-      "id": 379,
-      "company": "TechFlow Solutions",
-      "location": "New York, NY",
-      "affected_count": 42,
-      "notice_date": "2026-05-15",
-      "layoff_date": "2026-07-14",
-      "industry": "Mixed",
-      "source_url": "https://dol.ny.gov/warn-notices",
-      "unique_hash": "6efc00625613ff7f7f4f0f205887a74f",
-      "created_at": "2026-05-15 03:48:25"
     }
   ]
 }
